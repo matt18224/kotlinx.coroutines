@@ -607,13 +607,13 @@ internal open class JobSupport constructor(active: Boolean) : Job, ChildJob, Sel
     public override fun cancel(cause: Throwable?): Boolean =
         cancelImpl(cause) && handlesException
 
-    // parent is reporting failure to a child child
+    // Parent is reporting failure to a child child
     public final override fun parentCancelled(parentJob: Job) {
         cancelImpl(parentJob)
     }
 
-    // child was cancelled with cause
-    internal fun childCancelled(cause: Throwable): Boolean =
+    // Child was cancelled with cause
+    public open fun childCancelled(cause: Throwable): Boolean =
         cancelImpl(cause) && handlesException
 
     // cause is Throwable or Job when cancelChild was invoked
@@ -1165,6 +1165,7 @@ private class Empty(override val isActive: Boolean) : Incomplete {
 
 internal class JobImpl(parent: Job? = null) : JobSupport(true) {
     init { initParentJobInternal(parent) }
+    override val cancelsParent: Boolean get() = true
     override val onCancelComplete get() = true
     override val handlesException: Boolean get() = false
 }
