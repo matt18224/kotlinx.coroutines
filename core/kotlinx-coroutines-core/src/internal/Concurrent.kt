@@ -4,6 +4,7 @@
 
 package kotlinx.coroutines.experimental.internal
 
+import java.lang.reflect.*
 import java.util.concurrent.*
 import kotlin.concurrent.withLock as withLockJvm
 
@@ -13,3 +14,20 @@ internal actual fun <E> subscriberList(): SubscribersList<E> = CopyOnWriteArrayL
 internal actual typealias ReentrantLock = java.util.concurrent.locks.ReentrantLock
 
 internal actual inline fun <T> ReentrantLock.withLock(action: () -> T) = this.withLockJvm(action)
+
+private val REMOVE_FUTURE_ON_CANCEL: Method? = try {
+    ScheduledThreadPoolExecutor::class.java.getMethod("setRemoveOnCancelPolicy", Boolean::class.java)
+} catch (e: Throwable) {
+    null
+}
+
+@Suppress("NAME_SHADOWING")
+internal fun removeFutureOnCancel(executor: Executor): Boolean {
+    try {
+        val executor = executor as? ScheduledExecutorService ?: return false
+        (REMOVE_FUTURE_ON_CANCEL ?: return false).invoke(executor, true)
+        return true
+    } catch (e: Throwable) {
+        return true
+    }
+}

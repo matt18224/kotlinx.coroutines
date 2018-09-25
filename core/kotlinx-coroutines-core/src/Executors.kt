@@ -4,8 +4,9 @@
 
 package kotlinx.coroutines.experimental
 
+import kotlinx.coroutines.experimental.internal.*
 import kotlinx.coroutines.experimental.timeunit.TimeUnit
-import java.io.*
+import java.io.Closeable
 import java.util.concurrent.*
 import kotlin.coroutines.experimental.*
 
@@ -63,12 +64,22 @@ public fun ExecutorService.asCoroutineDispatcher_Deprecated(): CloseableCoroutin
 public fun Executor.toCoroutineDispatcher(): CoroutineDispatcher =
     asCoroutineDispatcher()
 
-private class ExecutorCoroutineDispatcherImpl(override val executor: Executor) : ExecutorCoroutineDispatcherBase()
+private class ExecutorCoroutineDispatcherImpl(override val executor: Executor) : ExecutorCoroutineDispatcherBase() {
+    init {
+        initFutureCancellation()
+    }
+}
 
 /**
  * @suppress **This is unstable API and it is subject to change.**
  */
 public abstract class ExecutorCoroutineDispatcherBase : ExecutorCoroutineDispatcher(), Delay {
+
+    private var removesFutureOnCancellation: Boolean = false
+
+    internal fun initFutureCancellation() {
+        removesFutureOnCancellation = removeFutureOnCancel(executor)
+    }
 
     override fun dispatch(context: CoroutineContext, block: Runnable) =
         try { executor.execute(timeSource.trackTask(block)) }
@@ -77,26 +88,42 @@ public abstract class ExecutorCoroutineDispatcherBase : ExecutorCoroutineDispatc
             DefaultExecutor.execute(block)
         }
 
+    /*
+     * removesFutureOnCancellation is required to avoid memory leak.
+     * On Java 7+ we reflectively invoke ScheduledThreadPoolExecutor.setRemoveOnCancelPolicy(true) and we're fine.
+     * On Java 6 we're scheduling time-based coroutines to our own thread safe heap which supports cancellation.
+     */
     override fun scheduleResumeAfterDelay(time: Long, unit: TimeUnit, continuation: CancellableContinuation<Unit>) {
-        val timeout =
-            try { (executor as? ScheduledExecutorService)
-                ?.schedule(ResumeUndispatchedRunnable(this, continuation), time, unit) }
-            catch (e: RejectedExecutionException) { null }
-        if (timeout != null)
-            continuation.cancelFutureOnCancellation(timeout)
-        else
-            DefaultExecutor.scheduleResumeAfterDelay(time, unit, continuation)
+        val future = if (removesFutureOnCancellation) {
+            scheduleBlock(ResumeUndispatchedRunnable(this, continuation), time, unit)
+        } else {
+            null
+        }
+
+        if (future != null) {
+            continuation.cancelFutureOnCancellation(future)
+            return
+        }
+
+        DefaultExecutor.scheduleResumeAfterDelay(time, unit, continuation)
     }
 
     override fun invokeOnTimeout(time: Long, unit: TimeUnit, block: Runnable): DisposableHandle {
-        val timeout =
-            try { (executor as? ScheduledExecutorService)
-                ?.schedule(block, time, unit) }
-            catch (e: RejectedExecutionException) { null }
-        return if (timeout != null)
-            DisposableFutureHandle(timeout)
-        else
-            DefaultExecutor.invokeOnTimeout(time, unit, block)
+        val future = if (removesFutureOnCancellation) {
+            scheduleBlock(block, time, unit)
+        } else {
+            null
+        }
+
+        return if (future != null ) DisposableFutureHandle(future) else DefaultExecutor.invokeOnTimeout(time, unit, block)
+    }
+
+    private fun scheduleBlock(block: Runnable, time: Long, unit: TimeUnit): ScheduledFuture<*>? {
+        return try {
+            (executor as? ScheduledExecutorService)?.schedule(block, time, unit)
+        } catch (e: RejectedExecutionException) {
+            null
+        }
     }
 
     override fun close() {

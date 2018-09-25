@@ -4,6 +4,7 @@
 
 package kotlinx.coroutines.experimental
 
+import kotlinx.coroutines.experimental.internal.*
 import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.experimental.*
@@ -62,10 +63,14 @@ public class ThreadPoolDispatcher internal constructor(
     private val nThreads: Int,
     private val name: String
 ) : ExecutorCoroutineDispatcherBase() {
-    private val threadNo = AtomicInteger()
 
+    private val threadNo = AtomicInteger()
     override val executor: Executor = Executors.newScheduledThreadPool(nThreads) { target ->
         PoolThread(this, target, if (nThreads == 1) name else name + "-" + threadNo.incrementAndGet())
+    }
+
+    init {
+        initFutureCancellation()
     }
 
     /**
