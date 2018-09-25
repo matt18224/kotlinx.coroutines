@@ -196,7 +196,7 @@ public suspend fun <T> withContext(
 ): T =
     // todo: optimize fast-path to work without allocation (when there is a already a coroutine implementing scope)
     withContextImpl(context, start = CoroutineStart.DEFAULT) {
-        currentScope {
+        coroutineScope {
             block()
         }
     }
@@ -212,7 +212,7 @@ public suspend fun <T> withContext(
 ): T =
     // todo: optimize fast-path to work without allocation (when there is a already a coroutine implementing scope)
     withContextImpl(context, start) {
-        currentScope {
+        coroutineScope {
             block()
         }
     }

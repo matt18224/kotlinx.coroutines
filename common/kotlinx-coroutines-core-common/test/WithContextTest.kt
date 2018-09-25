@@ -231,6 +231,26 @@ class WithContextTest : TestBase() {
         finish(8)
     }
 
+    @Test
+    fun testWithContextScopeFailure() = runTest {
+        expect(1)
+        try {
+            withContext(wrapperDispatcher(coroutineContext)) {
+                expect(2)
+                // launch a child that fails
+                launch {
+                    expect(4)
+                    throw TestException()
+                }
+                expect(3)
+            }
+        } catch (e: TestException) {
+            // ensure that we can catch exception outside of the scope
+            expect(5)
+        }
+        finish(6)
+    }
+
     private fun wrapperDispatcher(context: CoroutineContext): CoroutineContext {
         val dispatcher = context[ContinuationInterceptor] as CoroutineDispatcher
         return object : CoroutineDispatcher() {
