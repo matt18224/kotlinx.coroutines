@@ -149,7 +149,6 @@ internal abstract class EventLoopBase: CoroutineDispatcher(), Delay, EventLoop {
 
     internal fun execute(task: Runnable) {
         if (enqueueImpl(task)) {
-            // todo: we should unpark only when this delayed task became first in the queue
             unpark()
         } else {
             DefaultExecutor.execute(task)
@@ -226,11 +225,13 @@ internal abstract class EventLoopBase: CoroutineDispatcher(), Delay, EventLoop {
 
     internal fun schedule(delayedTask: DelayedTask) {
         if (scheduleImpl(delayedTask)) {
-            unpark()
+            if (shouldUnpark(delayedTask)) unpark()
         } else {
             DefaultExecutor.schedule(delayedTask)
         }
     }
+
+    private fun shouldUnpark(task: DelayedTask): Boolean = _delayed.value?.peek() === task
 
     private fun scheduleImpl(delayedTask: DelayedTask): Boolean {
         if (isCompleted) return false
